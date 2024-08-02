@@ -1,0 +1,861 @@
+#def BYTE 8
+#def WORD 32
+#def exp(x) 2^(x)
+
+#def pos(x) exp(x * BYTE)
+#def posc(x) 256^x
+
+#def BYTE_SIZE exp(BYTE)
+#def readByte(x) (_ / (pos(x))) % BYTE_SIZE
+
+#def WORD_SIZE exp(WORD)
+#def readWord(x) (_ / (pos(x))) % WORD_SIZE
+
+# posc saves two bytes _if_ given a non-constant
+
+IFOPT #def readWordc(x) readWord(x)
+IFNOPT #def readWordc(x) _ / posc(x) % WORD_SIZE
+IFOPT #def readBytec(x) readByte(x)
+IFNOPT #def readBytec(x) _ / posc(x) % BYTE_SIZE
+IFOPT #def read_dwordc(x) read_dword(x)
+IFNOPT #def read_dwordc(x) _ / posc(x) % 2^64
+IFOPT #def addvc(x, y, a) addv(x, y, a)
+IFNOPT #def addvc(x, y, a) a + y * posc(x)
+IFOPT #def addv2c(x, y, z, a) addv2(x, y, z, a)
+IFNOPT #def addv2c(x, y, z, a) a + (y + z * 2^32) * posc(x)
+IFOPT #def write_dword_fullc(x, v, a) write_dword_full(x, v, a)
+IFNOPT #def write_dword_fullc(x, v, a) a + (v - read_dword(x)) * posc(x)
+IFOPT #def writeWordc(x, y, a) writeWord(x, y, a)
+IFNOPT #def writeWordc(x, y, a) a + (y - readWordc(x)) * posc(x)
+
+
+# NOTE: In Acc!! mode, concurrent assignments occur in parallel; in debug mode they occur in reverse
+
+#def writeWord(x, y) writeWord(x, y, _)
+#def writeWord(x, y, a) a + (y - readWord(x)) * pos(x)
+#def writeByte(x, y) writeByte(x, y, _)
+#def writeByte(x, y, a) a + (y - readByte(x)) * pos(x)
+
+#def write_null(x) write_null(x, _)
+#def write_null(x, a) a - readWord(x) * pos(x)
+#def write_dnull(x) write_dnull(x, _)
+#def write_dnull(x, a) a - (_ / pos(x) % 2^64) * pos(x)
+#def write_qnull(x) write_qnull(x, _)
+#def write_qnull(x, a) a - (_ / pos(x) % 2^128) * pos(x)
+
+#def cond_write_null(x, y) cond_write_null(x, y, _)
+#def cond_write_null(x, y, a) a - readWord(x) * pos(x) * y
+
+#def write_dword(x, y, z) write_dword(x, y, z, _)
+#def write_dword(x, y, z, a) a + (y + 2^32 * z - _ / pos(x) % 2^64) * pos(x)
+#def write_qword(x, y, z, b, c) write_qword(x, y, z, b, c, _)
+#def write_qword(x, y, z, b, c, a) a + (y + 2^32 * z + 2^64 * b + 2^96 * c - _ / pos(x) % 2^128) * pos(x)
+
+# like write_dword but operates with a full 64-bit value, useful in some cases
+#def read_dword(x) _ / pos(x) % 2^64
+#def write_dword_full(x, v) write_dword_full(x, v, _)
+#def write_dword_full(x, v, a) a + (v - read_dword(x)) * pos(x)
+
+IFOPT #defm cond_write_dword_full(x, y, c) If(c, write_dword_full(x, y))
+IFNOPT #defm cond_write_dword_full(x, y, c) _ + (y - read_dword(x)) * pos(x) * c
+
+#def read_qword(x) _ / pos(x) % 2^128
+#def write_qword_full(x, v) write_qword_full(x, v, _)
+#def write_qword_full(x, v, a) a + (v - read_qword(x)) * pos(x)
+
+# this has literally one use
+#def write_6word_full(x, v) write_6word_full(x, v, _)
+#def write_6word_full(x, v, a) a + (v - (_ / pos(x) % 2^192)) * pos(x)
+
+
+# helper for alloc_ll, allocates [byte 2, arg, word 0]
+# this may need a - _ / pos(x) % 2^40, in theory it should be allocating into zeroed memory
+#def alloc_ll_helper(x, p) alloc_ll_helper(x, p, _)
+#def alloc_ll_helper(x, p, a) a + (2 + x * 2^8) * pos(p)
+
+# this may need a - _ / pos(x) % 2^40, in theory it should be allocating into zeroed memory
+#def alloc_int_helper(x, p) alloc_int_helper(x, p, _)
+#def alloc_int_helper(x, p, a) a + x * posc(p + 1)
+
+# helper for dual_alloc_ll, allocates [byte 2, arg1, word 0, byte 2, arg2, word 0]
+# for some reason this _does_ need a  - _ / pos(p) % 2^144 and I'm not sure why
+#def dual_alloc_ll_helper(x, y, p) dual_alloc_ll_helper(x, y, p, _)
+#def dual_alloc_ll_helper(x, y, p, a) a + (2 + 2^8 * x + 2^73 + 2^80 * y - _ / pos(p) % 2^144) * pos(p)
+
+# this may need a - _ / pos(p) % 2^72, in theory it should be allocating into zeroed memory
+#def prepend_ll_helper(x, p) prepend_ll_helper(x, p, _)
+#def prepend_ll_helper(x, p, a) a + (2 + x * 2^8) * pos(p)
+
+#def addv(x, y) addv(x, y, _)
+#def addv(x, y, a) a + y * pos(x)
+
+#def addv2(x, y, z) addv2(x, y, z, _)
+#def addv2(x, y, z, a) a + (y + z * 2^32) * pos(x)
+
+#defm putdighex(x) putc(48 + (x % 16) + (x / 10) * 39)
+# dumps word as 8 hex digits
+#defm dump_word(x) Count i while i - 8 { ; putdighex((x / (16 ^ (7 - i))) % 16) ; }
+
+#defm putc(x) Write x
+#defm putln() putc(10)
+
+#defm putdig(x) putc(48 + x)
+# _always_ print the last digit even if it's 0
+#defm putint(x) Count i while 10 - i { ; If6 (x / (10 ^ (9 - i)) + 0^(9-i), putdig(x / (10 ^ (9 - i)) % 10)) ; }
+#defm putsint(x) writeWord(ra, x+2^31) ; writeWord(rb, negative(rax-2^31)) ; If6(rbx, putc(45)) ; writeWord(ra, (rax - 2^31) * (-1) ^ rbx) ; putint(rax)
+
+# takes an unsigned int
+#defm putsint2(x) writeWord(ra, x % 2^31 + x / 2^31) ; If6(x / 2^31, putc(45)) ; putint(rax)
+
+#def debug(x) _
+#def debug(x,y) _
+#def debug(x,y,z) _
+#def debug(x,y,z,a) _
+#def debug(x,y,z,a,b) _
+#def debug(x,y,z,a,b,c) _
+
+# Just in case, I'm not allocating anything to NULL. Nothing _should_ rely on it, but anything that does will be extremely hard to debug
+
+#def NULL 0
+#def ra 4
+#def rb 8
+#def rc 12
+#def rd 16
+#def re 20
+#def rg 24
+#def sp 28
+#def sp2 32
+#def rf 36
+#def r9 40
+#def hp 44
+#def r10 48
+#def r11 52
+#def r12 56
+#def r13 60
+
+#def hpx readWord(hp)
+#def r9x readWord(r9)
+#def r10x readWord(r10)
+#def r11x readWord(r11)
+#def r12x readWord(r12)
+#def r13x readWord(r13)
+#def sp2x readWord(sp2)
+#def spx readWord(sp)
+#def rax readWord(ra)
+#def rbx readWord(rb)
+#def rcx readWord(rc)
+#def rdx readWord(rd)
+#def rex readWord(re)
+#def rfx readWord(rf)
+#def rgx readWord(rg)
+
+#def gdx readWord(rg)
+#def hgdx_o ucar(gdx)
+#def tgdx_o ucar(ucdr(gdx))
+
+# these are effectively constant, but currently I don't have any compiler support for static addresses
+# so they're just hardcoded
+#def hgdx 873
+#def tgdx 864
+
+#def STACK_START 64
+# This allows for 800/8 = 100 nested function calls and 800/4 = 200 parse depth
+# any more will overflow with undefined behaviour
+#def STACK_SIZE 800
+# heap size is unlimited
+#def HEAP_START STACK_START + STACK_SIZE
+
+# To avoid nested if statement issues - If not if because that's a reserved word
+#defm If(x, y) Count j while (x) * 0^j { ; y ; }
+#defm If2(x,y) Count k while (x) * 0^k { ; y ; }
+#defm If3(x,y) Count l while (x) * 0^l { ; y ; }
+#defm If4(x,y) Count m while (x) * 0^m { ; y ; }
+#defm If5(x,y) Count n while (x) * 0^n { ; y ; }
+#defm If6(x,y) Count o while (x) * 0^o { ; y ; }
+#defm If7(x,y) Count p while (x) * 0^p { ; y ; }
+#defm If8(x,y) Count q while (x) * 0^q { ; y ; }
+#defm If9(x,y) Count r while (x) * 0^r { ; y ; }
+#defm If10(x,y) Count s while (x) * 0^s { ; y ; }
+#defm If11(x,y) Count t while (x) * 0^t { ; y ; }
+
+# can't put multiline statements in a macro, so these exist
+# also I accidentally implemented macro overloading
+#defm conc() _
+#defm conc(x) x
+#defm conc(x,y) x ; y
+#defm conc(x,y,z) x ; y ; z
+#defm conc(x,y,z,a) x ; y ; z ; a
+#defm conc(x,y,z,a,b) x ; y ; z ; a ; b
+#defm conc(x,y,z,a,b,c) x ; y ; z ; a ; b ; c
+#defm conc(x,y,z,a,b,c,d) x ; y ; z ; a ; b ; c ; d
+#defm conc(x,y,z,a,b,c,d,e) x ; y ; z ; a ; b ; c ; d ; e
+#defm conc(x,y,z,a,b,c,d,e,f) x ; y ; z ; a ; b ; c ; d ; e ; f
+#defm conc(x,y,z,a,b,c,d,e,f,g) x ; y ; z ; a ; b ; c ; d ; e ; f ; g
+#defm conc(x,y,z,a,b,c,d,e,f,g,h) x ; y ; z ; a ; b ; c ; d ; e ; f ; g ; h
+#defm conc(x,y,z,a,b,c,d,e,f,g,h,i) x ; y ; z ; a ; b ; c ; d ; e ; f ; g ; h ; i
+#defm conc(x,y,z,a,b,c,d,e,f,g,h,i,j) x ; y ; z ; a ; b ; c ; d ; e ; f ; g ; h ; i ; j
+#defm conc(x,y,z,a,b,c,d,e,f,g,h,i,j,k) x ; y ; z ; a ; b ; c ; d ; e ; f ; g ; h ; i ; j ; k
+#defm conc(x,y,z,a,b,c,d,e,f,g,h,i,j,k,l) x ; y ; z ; a ; b ; c ; d ; e ; f ; g ; h ; i ; j ; k ; l
+#defm conc(x,y,z,a,b,c,d,e,f,g,h,i,j,k,l,m) x ; y ; z ; a ; b ; c ; d ; e ; f ; g ; h ; i ; j ; k ; l ; m
+#defm conc(x,y,z,a,b,c,d,e,f,g,h,i,j,k,l,m,n) x ; y ; z ; a ; b ; c ; d ; e ; f ; g ; h ; i ; j ; k ; l ; m ; n
+#defm conc(x,y,z,a,b,c,d,e,f,g,h,i,j,k,l,m,n,o) x ; y ; z ; a ; b ; c ; d ; e ; f ; g ; h ; i ; j ; k ; l ; m ; n ; o
+#defm conc(x,y,z,a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p) x ; y ; z ; a ; b ; c ; d ; e ; f ; g ; h ; i ; j ; k ; l ; m ; n ; o ; p
+#defm conc(x,y,z,a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q) x ; y ; z ; a ; b ; c ; d ; e ; f ; g ; h ; i ; j ; k ; l ; m ; n ; o ; p ; q
+#defm conc(x,y,z,a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r) x ; y ; z ; a ; b ; c ; d ; e ; f ; g ; h ; i ; j ; k ; l ; m ; n ; o ; p ; q ; r
+#defm conc(x,y,z,a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s) x ; y ; z ; a ; b ; c ; d ; e ; f ; g ; h ; i ; j ; k ; l ; m ; n ; o ; p ; q ; r ; s
+#defm conc(x,y,z,a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t) x ; y ; z ; a ; b ; c ; d ; e ; f ; g ; h ; i ; j ; k ; l ; m ; n ; o ; p ; q ; r ; s ; t
+
+
+#def mov(x, y, a) writeWord(x, readWord(y), a)
+#def mov(x, y) mov(x, y, _)
+
+
+# Allocates an integer in the heap, returns the address in r10
+# 1 byte for int tag, 4 bytes for int value
+#defm alloc_int(x) addv(hp,5, mov(r10,hp, alloc_int_helper(x, hpx)))
+
+#defm alloc_int_r12(x) addv(hp,5, mov(r12,hp, alloc_int_helper(x, hpx)))
+
+IFOPT #defm cond_alloc_int_r12(x) If2(rbx * r12x, addv(hp,5, mov(r12,hp, alloc_int_helper(x, hpx))))
+IFNOPT #defm cond_alloc_int_r12(x) _ + ((x * 2^8) * posc(hpx)+(hpx-r12x)*pos(r12)+5*pos(hp)) * 0^0^(rbx * r12x)
+
+# Allocates a string in the heap, returns the address in r10
+# 1 byte for string tag, n bytes for string value, 1 byte for null terminator
+# Strings are supposed to be created all at once, so no need to worry about fragmentation
+# and since we're allocating in zeroed memory, no need to worry about null terminators
+#defm alloc_str() mov(r10,hp) ; writeByte(hpx, 1) ; addv(hp,2)
+#defm alloc_str_r12() addv(hp,2, writeByte(hpx, 1, mov(r12,hp)))
+
+IFOPT #defm cond_alloc_str_r12() If2(is_null(r12x), alloc_str_r12())
+
+IFNOPT #defm cond_alloc_str_r12() _+((hpx-r12x)*pos(r12)+posc(hpx)+2*pos(hp))*0^r12x
+
+#defm append_str(x) addv(hp,1,addv(hpx - 1, x))
+
+
+IFOPT #defm cond_append_alloc_str() If(1-3302829851648/2^r9x%2, conc(\# token
+  If2(is_null(r12x), alloc_lp_str()),\
+  append_lp_str(r9x, r12x),\
+))
+
+IFNOPT #defm cond_append_alloc_str() \#If(1-rdx, conc(\# token
+\# not worth further branchless
+  _ + (posc(hpx) + (hpx - r12x) * pos(r12) + 5 * pos(hp)) * rex * rdx ;\
+  _ + (r9x * posc(hpx) + pos(hp) + posc(r12x + 1)) * rdx\
+\#))
+
+#defm putstr(x) Count i while readByte(x + i + 1) { ; putc(readByte(x + i + 1)) ; }
+
+
+# Linked lists are 1 byte for tag, 4 bytes for head pointer, 4 bytes for tail pointer
+#def alloc_ll(h) alloc_ll(h, _)
+#def alloc_ll(h, a) addv(hp, 9, mov(r10,hp, alloc_ll_helper(h, hpx, a))) 
+
+# takes an extra parameter for the return value
+#def alloc_ll_ret(h, v) alloc_ll_ret(h, v, _)
+#def alloc_ll_ret(h, v, a) addv(hp, 9, mov(v, hp, alloc_ll_helper(h, hpx, a)))
+
+\# allocate two linked lists from values, return the heads in v1, v1 + 4
+#def dual_alloc_ll_ret(h1, h2, v1, p) dual_alloc_ll_ret(h1, h2, v1, p, _)
+#def dual_alloc_ll_ret(h1, h2, v1, p, a) \
+addv(hp, 18, \
+write_dword_full(v1, (hpx + 9) * (2^32 + 1) - 9, \
+dual_alloc_ll_helper(h1, h2, p, a)))
+
+# Prepends a pointer to a linked list (allocating a new one), returns the new list
+#defm prepend_ll(x, y) writeByte(hpx, 2) ; write_dword(hpx + 1, x, y) ; mov(r10,hp) ; addv(hp,9)
+
+#defm prepend_ll_dword(x) prepend_ll_helper(x, hpx) ; mov(r10,hp) ; addv(hp,9)
+
+# Null safe 
+#def head_ll(x) 0^0^x * readWordc(x + 1)
+#def tail_ll(x) 0^0^x * readWordc(x + 5)
+
+# _not_ null safe, use only where guaranteed
+#def u_head(x) readWordc(x + 1)
+#def u_tail(x) readWordc(x + 5)
+
+# conventional names
+#def car(x) head_ll(x)
+#def cadr(x) head_ll(tail_ll(x))
+#def caddr(x) head_ll(tail_ll(tail_ll(x)))
+#def cadddr(x) head_ll(tail_ll(tail_ll(tail_ll(x))))
+#def cdr(x) tail_ll(x)
+#def cddr(x) tail_ll(tail_ll(x))
+#def cdddr(x) tail_ll(tail_ll(tail_ll(x)))
+#def cdar(x) tail_ll(head_ll(x))
+#def caar(x) head_ll(head_ll(x))
+
+#def ucar(x) u_head(x)
+#def ucadr(x) u_head(u_tail(x))
+#def ucaddr(x) u_head(u_tail(u_tail(x)))
+#def ucadddr(x) u_head(u_tail(u_tail(u_tail(x))))
+#def ucdr(x) u_tail(x)
+#def ucddr(x) u_tail(u_tail(x))
+#def ucdddr(x) u_tail(u_tail(u_tail(x)))
+#def ucaar(x) u_head(u_head(x))
+#def ucdar(x) u_tail(u_head(x))
+
+# Prints either a string or an integer based on the tag
+# will break if passed a linked list, so don't do that 
+#defm puts(x) If (readByte(x), print_lp_str(x)) ; If(1 - readByte(x), putsint2(readWordc(x + 1)))
+
+
+
+#defm While(x, y) Count h while (x) { ; y ; }
+#defm While2(x, y) Count g while (x) { ; y ; }
+#defm While3(x, y) Count f while (x) { ; y ; }
+#defm While4(x, y) Count e while (x) { ; y ; }
+#defm While5(x, y) Count d while (x) { ; y ; }
+#defm While6(x, y) Count c while (x) { ; y ; }
+
+# note: null is not considered a list
+# add a ^2 on the end if dealing with weird values
+#def is_list(x) 0^(2-readByte(x))
+#def isnt_list(x) 2-readByte(x)
+#def is_null(x) 0^x
+
+# To print a linked list, we need to recursively print each element. Unfortunately, the macro system I've set up doesn't support recursion.
+# So we'll have to allocate a stack to keep track of the elements we need to print.
+#defm print(x) If3(is_list(x)+0^x, putc(40)) ;  writeWord(hpx,x) ; writeWord(sp2,hpx + 4) ; \
+While((sp2x - hpx), conc(mov(r9,sp2x-4),\# Load the address of current element into r9
+  \#debug("!stack:",deval("' '.join([str(readWord(%d + i*4)) for i in range(0, 4)])" % hpx), "sp2:", (sp2x - hpx)/4, "r9:", r9x),\
+  If3(isnt_list(r9x), conc(\
+    While4(0^(r9x+e), putc(41)),\# if null put close paren
+    If4(r9x, puts(r9x)),\
+    poptryspace(),\
+  )),\
+  If3(is_list(r9x), conc(\
+    \#debug(r9x, "list:", head_ll(r9x), tail_ll(r9x)),\
+    write_dword_fullc(sp2x-4, ucdr(r9x)+2^32*ucar(r9x),_),\
+    \# If4(is_list(readWordc(sp2x)) + is_null(readWordc(sp2x)) 
+    While4(0^((2 - readByte(readWordc(sp2x))) * readWordc(sp2x)+e) , putc(40)),\
+    addv(sp2,4),\
+  ))\
+))\
+
+
+# Macro used in the above to pop current element, and print a space if the TOS is not null
+# This may or may not print a space after something depending on the value of r13 - add a * (sp2x - hpx) to fix
+#defm poptryspace() addv(sp2,-4,write_null(sp2x)) ; If4(readWordc(sp2x-4), putc(32))
+
+#defm println(x) print(x) ; putln()
+
+# NOTE: Due to the iterative nature of parsing, we do sometimes need to append a token to a list
+# So we keep track of the overall list in r11, along with a stack of pointers to the tails of each list.
+# Unlike the print function, this does actually use the stack as we also need to allocate new tokens 
+# while parsing. Since STACK_SIZE is 200 we can handle an expression depth of 50.
+
+# We take input from the magic variable N, which reads a byte from the input stream when accessed. 
+# Also, we store the address of the current token, if it exists, in r12 (otherwise NULL)
+
+IFNOPT #defm setup_dict_helper(h, c, p) _ + (258 + h * 2^8 + 2^73 + \
+(882+h*24) * (2^80 + 0^0^(9 - h) * (4^56+2^40)) + (15*4^56+6*2^40) * 0^0^(9 - h) + 257*2^144+ (c) * 4^92) * 256^(p)
+
+
+IFOPT #defm setup_dict_helper(h, c, p) addv(p, 2) ; write_dword(p + 1, h + 1, (p + 24) * 0^0^(9 - h)); \
+writeByte(p + 9, 2); write_dword(p + 10, p + 18, (p + 24 + 9) * 0^0^(9 - h)) ; \
+writeByte(p + 18, 1) ; writeWord(p + 19, 1) ; writeByte(p + 23, c) 
+
+#defm setup_dict() \
+While(h-10,conc(\
+  \# 684743974900 is charcodes of chtslevqid in base-20
+  setup_dict_helper(h, 684743974900/20^h%20+99, 864 + h*24),\
+)) \
+
+#defm setup_rest_acc() \
+_+1113*2^352 \# init hp
++2^8833+\# alloc null ll
+69*2^292+\# write ll to rf
+2^262+\# init sp2 to STACK_SIZE
+69*2^516\# push ll to stack
+
+#defm setup_parse() addv(hp, 1104) ;  alloc_ll(NULL) ; mov(rf,r10) ; writeWord(sp2, STACK_START) ; \
+mov(sp2x, r10) ; \# note: assume 1+ chars of input
+
+
+
+#defm parse() \
+While(r9x+0^h, conc(\
+  writeByte(r9, N),\
+  \#debug("char %d" % r9x, r12x),\
+  \# 3302829851648 is a bitmask for 10, 32, 40, 41 - " \n()"\
+  \# If it's "() \n" _and_ there's a token, we need to run once
+  \# If it's "(", regardless of token, we need to run once
+  \# and if both we need to run twice
+  \# so we need to write the iteration count to a register since r12x gets zeroed while this runs
+  write_dword(rd, 1-3302829851648/2^r9x%2, 0^r12x),\
+  While3(0^read_dword(rd) + 0^(r9x - 40)^2 - f, conc(\# " \n()" and token
+    try_parse_int(),\
+    append_token(r12x),\
+    write_null(r12, \
+    addv(sp2, 0^r12x*4)),\
+  )),\
+  cond_append_alloc_str(),\
+  cond_pop_token(),\
+)) \# To avoid append-to-null issues, we prepend a null to the list, which needs removal
+
+# To append a token to a tail pointer, we need to:
+# - If the tail pointer is null, allocate a new list with the token as the head and return that as the new tail
+# - Otherwise, replace the tail with a new list with the token as the head and null as the tail, and return that as the new tail
+
+  \# If it was null, then the reference to it in the previous item is also null, so it needs updating
+  \# Otherwise push it to the previous tail pointer and replace it
+  \# either way the address is null so addv is safe
+#defm append_token(x) writeWord(ra, readWordc(sp2x), alloc_ll_helper(x, hpx)) ; \
+addv(hp, 9,\
+addvc(((readWordc(sp2x - 4) - 4) * is_null(rax) + rax + 5), hpx,\
+write_dword_full(sp2x, hpx))) 
+
+
+#defm pop_token() 
+
+IFOPT #defm cond_pop_token() If(0^(r9x - 41)^2, addv(sp2, -4, write_null(sp2x)))
+# addv calls can only write to arbitrary addresses in unoptimised mode
+IFNOPT #defm cond_pop_token() _ - 0^(r9x - 41)^2*(readWordc(sp2x) * posc(sp2x)+4*pos(sp2))
+
+# Attempts to parse an int from the current token
+#defm try_parse_int() write_dword_full(rb, 1) ; \
+While2(rbx * r12x * (g - readWordc(r12x + 1)), conc(\
+  writeWord(ra, readBytec(r12x + g + 5)),\
+  write_dword(rb, is_digit(rax), rcx * 10 + rax - 48)\
+)) ; cond_alloc_int_r12(rcx)
+
+# yep, more bitmasks
+#def is_digit(x) 1023*2^48/2^x%2
+
+# 1 if negative, 0 otherwise - shoutout to dlosc for this
+#def negative(x) -(1/(3*x+2))
+#def abs(x) x * (-1) ^ negative(x)
+
+# unsigned to signed, signed to unsigned
+# a leading 1 bit negates and subtracts 1
+#def utos(x) x % 2 ^ 31 * (-1) ^ (x / 2 ^ 31) - x / 2 ^ 31
+#def stou(x) abs(x) + (2 ^ 31 - 1) * negative(x)
+
+
+# More efficient version of streq
+# The +1s are necessary so that we can check if one string's ended and the other hasn't before the loop ends
+#defm streq(x, y) writeWord(r12, 1) ; While(\
+  readByte(x + h) * readWord(r12), \
+  writeWord(r12, 0^(readByte(x + h + 1) - readByte(y + h + 1))^2)\
+)
+
+# in theory branchless streq should be possible but in practice there's no nice way to do it
+# if I'd used length-prefixed strings it would be possible
+
+# naive O(n) append to linked list, only used for function arguments
+# doesn't handle null x
+#defm append_ll(x, y) writeWord(r9, x) ; While(ucdr(r9x), writeWord(r9, ucdr(r9x))) ; alloc_ll_ret(y, r9x + 5) \# r10x
+
+# Append to either x or rex, depending on which is not null
+#defm append_ll2(x, y) While(tail_ll(r9x)+0^h, writeWord(r9, ucdr(r9x)*0^0^h+x*0^h)) ; addv(hp, 9, addvc(r9x + 5 + (spx-5) * 0^r9x, hpx, alloc_ll_helper(y, hpx)))
+
+
+# appends to list contained in rex
+#defm append_ll_rex(y) While(ucdr(rex), writeWord(re, ucdr(rex))) ; alloc_ll_ret(y, rex + 5) \# r10x
+
+#defm acc_setup() 1198704525114599554102255523560441603455032846180711214824393426055922452702811031133614075962569233827287231059292261494216853795306350833048826043573052842147372566846883101536828743853092679095929000514406672588840395887987098471123009130550023079492569380379901978216125320418621599067566375466139085644740408835482345228022801874589127922786880460869755442871516303155198525713546684438051729375236748704884727552323373084402859536774981157225058463059867240919904819080811926246076980338208179654068097144245428666609044010373813403671270137217*2^6913 + 6854595096651368696810006163171545880684733801907025052959593*2^192 + 273*2^6402+N*2^320
+
+
+#defm add_gd(n, v) prepend_ll(n,hgdx_o) ; writeWord(gdx+1, r10x) ; prepend_ll(v,tgdx_o) ; writeWord(ucdr(gdx)+1, r10x)
+#defm add_b(n, v) .ascii v ; add_gd(r10x, n)
+
+#defm append_gd(n, v) While(ucdr(r12x)+0^h, \
+  write_dword_full(r12, (ucdr(r12x)+2^32*ucdr(r13x))*0^0^h+3710851744617*0^h)\
+) ; addv(hp, 18, addvc(r12x + 5, hpx, addvc(r13x + 5, hpx + 9, dual_alloc_ll_helper(n, v, hpx)))) ; 
+
+
+# Look up through the call stack for a function call, null if nonexistent
+# This should ignore any function calls where not all arguments have been evaluated
+# as this will be passed to one of those
+# We can safely use r10=NULL initially as a function call will never be null
+# Also, as a lookup will never occur at the top of the stack, we can safely run at least one iteration of the loop to (probably) set r10 to null.
+#defm get_local_scope() While4((spx - 8*e) / 72 * 0^r10x+0^e, conc(\
+  \#debug(end='tos '),println(r12xx),\
+  write_dword_full(rc, read_dwordc(spx - 8*e - 8)),\
+  \# it's fine to use ucar here as, if car(rdx) is null, the condition will be false anyway
+  \# and if rcx is null it'll also be false
+  writeWord(r10, rcx * 0^0^(ucar(rcx) / 64 * 0^rdx)),\
+)); write_dword(ra, ucaar(r10x), ucdr(r10x)) ; \
+\# variadic functions: if ra is a string, wrap it and rb in a list
+\# this'll also trigger if rax is null, but it won't be
+wrap_if_string()
+
+IFOPT #defm wrap_if_string() If8(isnt_list(rax), dual_alloc_ll_ret(rax, rbx, ra, hpx))
+IFNOPT #defm wrap_if_string() \
+_ + ((2 + 2^8 * rax + 2^73 + 2^80 * rbx) * posc(hpx) + \
+((hpx + 9) * (2^32 + 1) - 9 - read_dword(ra)) * pos(ra) + \
+18*pos(hp)) * 0^is_list(rax)
+
+
+
+# Look up a variable in the local scope, then the global scope
+# The *(e-2) is to stop and return null if not found, which shouldn't be necessary but somehow is
+#defm dict_lookup(s) While4(0^r13x*(e-2)+0^e, conc(\
+  cond_write_dword_full(ra, hgdx+2^32*tgdx, e),\
+  While2(rax, conc(\
+    \# update only if we _haven't_ found it
+    cond_write_dword_full(ra, ucdr(rax)+2^32*ucdr(rbx), 0^0^g),\
+    \#streq(s, ucar(rax)),\
+    cond_write_null(ra, streq_lp(s, ucar(rax))),\
+  )),\
+  writeWord(r13, ucar(rbx))\
+))
+
+
+# oh god it begins
+
+# This wraps the expression in a magic print call
+
+#def spxx readWordc(spx)
+#def spx2 readWordc(spx + 4)
+
+IFOPT #defm handle_if() \
+If5(rbx * 0^cdr(rbx) * 0^(rax-9)^2, conc(\
+  \# If needs to have its first argument evaluated naturally, then the other two unevaluated
+  \#debug('preemptive if'),\
+  addvc(rbx + 5, rgx,\# rbx+5 is null so this is safe
+  write_null(spx + 4)),\
+))
+IFNOPT #defm handle_if() \
+  \# If needs to have its first argument evaluated naturally, then the other two unevaluated
+  \#debug('preemptive if'),\
+  _ + (rgx * posc(rbx+5) \# rbx+5 is null so this is safe
+  - readWordc(spx + 4) * posc(spx + 4)) * 0^(0^rbx + cdr(rbx) + (rax-9)^2)\
+
+IFOPT #defm handle_def() \
+If5(0^(rax - 10)^2 * 0^rbx, conc(\
+  \#debug('def'),\
+  \# append the name to the d and pop it
+  write_null(rgx + 5,\
+  writeWord(spx + 4, ucdr(rgx),\
+  addvc(rex + 5, rgx,_))),\
+))
+IFNOPT #defm handle_def() \
+\#debug('def'),\
+\# append the name to the d and pop it
+_+(rgx*posc(rex + 5)\
+  + (ucdr(rgx) - readWordc(spx + 4))*posc(spx + 4)\
+  - readWordc(rgx + 5) * posc(rgx + 5)) *\
+  0^(rax - 10)^2 * 0^rbx
+
+IFOPT #defm handle_macro() \
+If5(rax * 0^rbx * is_macro(rax), conc(\
+  \# move uneval'd args to args - it's okay to do this destructively since it'll never be accessed at runtime
+  \#debug("macro"),\
+  write_null(spx + 4,\
+  \# also remove the leading empty list if present
+  \# since rbx is null this is safe
+  addv2c(rex + 1, (ucdr(rax) - rax) * 0^0^(rax / 64), rgx, _)),\
+))
+IFNOPT #defm handle_macro() \
+  _ + (((ucdr(rax) - rax) * 0^0^(rax / 64) + 2^32 * rgx) * posc(rex + 1) \
+  - readWordc(spx + 4) * posc(spx + 4)) * 0^0^(rax * 0^rbx * is_macro(rax))\
+  \# also remove the leading empty list if present
+  \# since rbx is null this is safe
+
+
+IFOPT #defm push_if_list() \
+If7(is_list(r11x), conc(\# If a list, push it to the stack
+  addv(sp, 8),\
+  write_dword_full(spx, r11x*2^32),\
+))
+
+IFNOPT #defm push_if_list() \
+\# If a list, push it to the stack
+  _+(8*pos(sp)\
+  +r11x*2^96*posc(spx))*is_list(r11x)\
+
+
+IFOPT #defm handle_eval() \
+If7(0^(rcx - 7)^2, conc(\# eval simply replaces its call with a call to id
+  addv(spx + 4, ucdr(rax)),\# second stack is empty so this is safe
+  write_dword_full(rax + 1, 12),\
+))
+
+IFNOPT #defm handle_eval()  \
+\# eval simply replaces its call with a call to id
+  _ + (ucdr(rax) * posc(spx + 4)\# second stack is empty so this is safe
+   + (12 - read_dwordc(rax + 1)) * posc(rax + 1)) * 0^(rcx - 7)^2\
+
+IFOPT #defm collapse_eval_if() \
+If8(0^(head_ll(readWord(spx - 8)) - 12)^2, conc(\
+  write_qword_full(spx - 8, read_dword(spx)),\
+  addv(sp, -8),\
+))
+
+IFNOPT #defm collapse_eval_if() \
+  _ + ((read_dword(spx) - _ / posc(spx - 8) % 2^128) * posc(spx - 8)\
+  - 8 * pos(sp)) * 0^(head_ll(readWordc(spx - 8)) - 12)^2\
+  
+IFOPT #defm handle_if_def_macro() \
+  handle_macro() ;\
+  handle_if() ;\
+  handle_def() \
+
+IFNOPT #defm handle_if_def_macro() \
+  _ + (((ucdr(rax) - rax) * 0^0^(rax / 64) + 2^32 * rgx) * posc(rex + 1) \
+  - readWordc(spx + 4) * posc(spx + 4)) * 0^0^(rax * 0^rbx * is_macro(rax)) \
+  + (rgx * posc(rbx+5) \# rbx+5 is null so this is safe
+  - readWordc(spx + 4) * posc(spx + 4)) * 0^(0^rbx + cdr(rbx) + (rax-9)^2) \
+  + (rgx*posc(rex + 5)\
+  + (ucdr(rgx) - readWordc(spx + 4))*posc(spx + 4)\
+  - readWordc(rgx + 5) * posc(rgx + 5)) *\
+  0^(rax - 10)^2 * 0^rbx \
+
+# Details of how this works are documented in the spec.md file. sp points to the next element of the stack
+#defm eval(x) writeWord(sp, STACK_START) ; dual_alloc_ll_ret(11, x, spx, hpx) ; \
+While3( (spx / STACK_START),conc(\
+  write_dword_full(re, read_dword(spx)),\
+  write_dword_full(ra, read_dwordc(rex + 1) * 0^0^rex),\
+  handle_if_def_macro(),\
+  write_dword_full(re, read_dword(spx)),\
+  If5(rgx, conc(\# uneval'd args remaining
+    writeWord(r11, ucar(rgx)),\
+    If7(0^(1 - readBytec(r11x))^2, conc(  \# string gets looked up in global dict
+      get_local_scope(),\
+      dict_lookup(r11x),\
+    )),\
+    \# int/null get passed as is. This works as long as the item at address 0 is 0
+    addv(r13, (r11x-r13x)*0^readBytec(r11x)),\
+    If7(isnt_list(r11x),conc(\# if not a list, push it to args
+      append_ll2(rex, r13x),\
+      \# pop args - this can safely be done for non-lists.
+      writeWordc(spx + 4, ucdr(rgx),_),\
+    )),\
+    push_if_list(),\
+  )),\
+  write_dword_full(ra, read_dword(spx)),\
+  write_dword_full(rc, read_dwordc(rax + 1)),\
+  While6(0^(rbx+c), conc(\# no more uneval'd args, time to call a function
+    write_dword(re, ucar(rdx), ucadr(rdx)),\# it's fine to use ucaddr here because, even if cddr is null, caddr is just a random value
+    \#debug('rdx', car(spxx), end=' eval: '),println(spxx),\
+    If7(0^(rcx - 11) ^ 2, conc(\# magic top-level print
+      \#debug('top-level print'),\
+      println(rex),\
+      addv(sp, -8, write_dnull(STACK_START)),\
+    )),\
+    \# chtsleq and id simply return a value, vdi need other trickery
+    \# bitmask for 1,2,3,4,5,6,8,12
+    handle_eval(),\
+    If7(4479/2^rcx%2, conc(\
+      \#debug('builtin',rdx,end=' '),println(cdr(spxx)),\
+      \# without this conc the parser complains about "cannot overload If8 with two arguments". I have no idea
+      \# this is one of those bugs you just ignore
+      conc(\
+      \
+      \# we don't actuall need to do a conditional here, since this has no side effects and 
+      \# will get overwritten by any other commands
+      \# (normally this'd be if rcx is 1)
+      prepend_ll_helper(read_dword(re), hpx), \
+       \# head and tail are almost the same, so we can combine them - it's just reading from rax+1 vs rax+5
+      addv(hp,9,\
+      writeWord(r10, 12/2^rcx%2*readWordc(rex - 7 + 4 * rcx) + 0^(rcx-1)^2*hpx)),\
+      \# ssub and lt share a lot of code, so we can combine them
+      If9(48/2^rcx%2, conc(\
+        write_dword(r12, readWordc(rex + 1), readWordc(rgx + 1)),\
+        writeWord(ra, 2^31 + utos(r12x) - utos(r13x)),\
+        alloc_int_helper(\
+          rcx/5 * -(1/(3 * (rax - 2^31) + 2))\
+          + 4/rcx * stou(rax - 2^31)\
+        ,hpx),\
+      )),\
+      If9(0^(6-rcx)^2, conc(\
+        eq(rex, rgx),\
+        alloc_int_helper(0^0^rax, hpx),\
+      )),\
+      ),\
+      \
+      \# bitmask for 8,12
+      addv(hp, 5, addv(r10, 4352/2^rcx%2 * rex + \
+      \# bitmask 4,5,6 for return values of lse
+      112/2^rcx%2*hpx)),\# q and id behave exactly the same, but one is treated as a macro and the other isn't
+      \#addv(hp,5),\
+      \#debug(end='res: '),println(r10x),\
+      \
+      \# Pop at least once, then pop until no longer the return value of a function
+      While4(ucar(spxx) / 64 * 0^spx2+0^e, conc(\
+        \#debug(end='popping: '),println(spxx),\
+        addv(sp, -8, write_dnull(spx)),\
+      )),\
+      \# And push to args of calling function
+      \# (if this is the calling function it could be null)
+      append_ll2(spxx, r10x),\
+      writeWordc(spx + 4, ucdr(spx2),_),\# And finally pop the value from uneval'd args
+    )),\
+    \# I don't think branchlessing this saves any bytes
+    If7(0^(rcx - 9)^2, conc(\# if replaces its call with id of either second or third arg depending on first
+      writeWord(r10, ucaddr(rdx)),\
+      addv(r10, (rgx - r10x) * 0^0^truthy(rex)),\
+      \#debug('eval if',truthy(cadr(spxx)),end=', value: '),println(spxx),\
+      \# If this if is itself the argument of a call to id, replace it with the result
+      \# This both allows for TCO and cleans up the call stack
+      \# (spx - 8) / STACK_START) <=> spx / 72
+      collapse_eval_if(),\
+      addv(hp, 9, addv(spx + 4, hpx, alloc_ll_helper(r10x, hpx, \
+      write_dword_fullc(rax + 1, 12,_)))),\
+    )),\
+    If10(0^(rcx - 10)^2,conc(\# def 
+      \#debug('def',end=' '),println(spxx),\
+      \# Appends to the global dict, so replacing a name silently fails (and ignores the new value)
+      append_gd(rex, rgx),\
+      \# replace with a already-eval'd call to id
+      write_null(rdx + 5,\
+      writeWordc(rax + 1, 12,_)),\
+    )),\
+    \# If it's not a builtin, it's a user-defined function / macro
+    \# They're treated the exact same way, but macros are passed uneval'd args
+    \# We push id(body) rather than body to deal with the edgecase of a function returning a constant
+    \#debug('rdx',rdx),\
+    If7(rcx / 64, conc(\
+      \# TCO is actually extremely simple: If the previous element of the stack is a user-defined function call,  
+      \# we can just replace it with the current call
+      \# (except a function call wraps its argument in id, so it's actually two back)
+      \#debug (end='prev'), debug(head_ll(readWord(spx - 8))),\
+      \#debug(rdx, end=' fn '),println(spxx),\
+      \#addv(rax + 1, ucar(rcx) - rcx),\
+      \# this can't be parallelised because handle_tco has to pop the stack
+      handle_tco(),\
+      addv(sp, 8,\
+      alloc_ll(12,\
+      addv2c(spx + 8, hpx, ucdr(rcx), _))),\
+      \#debug(end='body'),println(spx2),\
+    ))\
+  ))\
+))
+
+IFOPT #defm handle_tco() \
+If8(head_ll(readWord(spx - 16)) / 64 * 0^(12-head_ll(readWord(spx - 8)))^2, conc(\
+  addv(sp, -16, write_6word_full(spx - 16, read_dword(spx))),\
+))\
+
+IFNOPT #defm handle_tco() \
+  _ + ((read_dword(spx) - _ / posc(spx - 16) % 2^192) * posc(spx - 16) - 16 * pos(sp)) * \
+  0^0^(head_ll(readWordc(spx - 16)) / 64 * 0^(12-head_ll(readWordc(spx - 8)))^2)
+
+
+
+# For reasons (see above) i / d are considered separately
+#def is_macro(x) 0^(x-8)^2 + 0^ucar(x) * (x / 64)
+
+IFOPT #def readByteWord(x) readWord(x + 1) * 256 + readByte(x)
+IFNOPT #def readByteWord(x) _ / posc(x) % 2^40
+
+#def truthy(x) x * readByteWord(x)
+
+#defm pops2() addv(sp2, -8, write_dnull(sp2x))
+
+IFOPT #defm if_eq_pop_s2() \
+If2(0^(rex - rgx)^2, conc(\
+  \# pop stack
+  pops2()\
+))\
+
+IFNOPT #defm if_eq_pop_s2() \
+\# pop stack
+_ - 0^(rex - rgx)^2 * (read_dword(sp2x) * posc(sp2x) + 8 * pos(sp2))
+
+IFOPT #defm int_check() \
+If4(0^readBytec(rex), conc(\
+  \# int check - if different, they're not equal
+  \#debug('int check'),\
+  writeWord(ra, 0^(readWord(rex + 1) - readWord(rgx + 1))^2),\
+  pops2()\
+))\
+
+IFNOPT #defm int_check() \
+_+((0^(readWordc(rex + 1) - readWordc(rgx + 1))^2-rax)*pos(ra) \
+- read_dword(sp2x) * posc(sp2x) - 8 * pos(sp2)) * 0^readBytec(rex)
+
+IFOPT #defm list_check() \
+If4(0^(readByte(rex) - 2)^2, conc(\
+  \# list check
+  \#debug('list check'),\
+  addv(sp2, 8,\
+  write_qword(sp2x, ucdr(rex),ucdr(rgx),ucar(rex),ucar(rgx))),\
+))\
+
+IFNOPT #defm list_check() \
+\# list check
+\
+_ + ((ucdr(rex) + 2^32*ucdr(rgx)+2^64*ucar(rex)+2^96*ucar(rgx) - read_qword(sp2x)) * posc(sp2x) + 8 * pos(sp2)) \
+* 0^(readBytec(rex) - 2)^2
+
+IFOPT #defm str_check() \
+If4(0^(readBytec(rex) - 1)^2, conc(\
+  \# string check
+  writeWord(ra, streq_lp(rex, rgx)),\
+  pops2()\
+))
+
+# this can't be branchless'd because streq_lp will attempt to read potentially millions of bytes past the end of the string
+# if passed a non-string
+# I could add safety checks to prevent this but it'd be a pain and probably wouldn't save bytes at this point
+IFNOPT #defm str_check() \
+If4(0^(readBytec(rex) - 1)^2, conc(\
+  \# string check
+  addv(ra, -0^streq_lp(rex, rgx), \# addv is safe here because we already know it's 1
+  addv(sp2, -8, write_dnull(sp2x))),\
+))
+
+
+# deep equality - uses sp2
+\# ignores its arguments and takes input from re, rg since that's the only place it's used
+# ra is always going to be truthy because it's the arg list beforehand
+#defm eq(x, y) mov(sp2, hp) ; \
+While2(rax * (sp2x / hpx), conc(\
+  \# pointer check - if the same, they're equal, pop
+  if_eq_pop_s2(),\
+  If2(rex - rgx, conc(\
+    \# We already know they're not the same, so if one is null, they're not equal
+    \# And if different types, they're not equal
+    writeWord(ra, 0^(0^rex + 0^rgx) * 0^(readBytec(rex) - readBytec(rgx))^2),\
+    \# otherwise do the appropriate check
+    \# checking if the types match _is_ necessary here due to streq
+    If3(rax, conc(\
+      int_check(),\
+      str_check(),\
+      list_check()\
+    )),\
+  )),\
+  try_clear_stack(), \# clean up stack
+  \# we initially take input from re / rg, but we can operate on them and avoid actually pushing anything to the stack until later
+  \# All this means is that the top-level arguments passed to eq are never pushed (but sp2 is still incremented)
+  write_dword_full(re, read_dword(sp2x)),\
+))
+
+IFOPT #defm try_clear_stack() While(sp2x / hpx*0^rax, pops2())
+# who needs modulo when you can just DELETE
+IFNOPT #defm try_clear_stack() _ * 0^0^rax + (_ % posc(hpx)) * 0^rax
+
+
+# Length-prefixed string stuff
+# [1] [4-byte length] [string]
+
+#defm alloc_lp_str() writeByte(hpx, 1) ; writeWord(hpx + 1, 0) ; mov(r12, hp) ; addv(hp, 5)
+
+# unlike the other append_str this needs a head address 
+#defm append_lp_str(x, h) writeByte(hpx, x, addv(hp, 1, addvc(h + 1, 1, _)))
+
+
+#defm print_lp_str(x) While4(e - readWordc(x + 1), putc(readBytec(x + e + 5)))
+
+# _this_ is the reason I switched to length-prefixed strings
+# (as long as the string doesn't contain any 0x0[012] bytes) I can use a single integer equality check to compare strings
+IFNOPT #def streq_lp(x, y) 0^((read_to_end(x+1) - read_to_end(y+1)) % posc(readWordc(x + 1) + 4))
+
+#def read_to_end(x) _ / posc(x)
+
+IFOPT #def streq_lp(x, y) 0^(read_n_bytes(x+1, readWord(x + 1) + 4) - read_n_bytes(y+1, readWord(x + 1) + 4))^2
+
+setup_dict()
+IFOPT setup_parse()
+IFNOPT setup_rest_acc()
+
+parse()
+
+While5(ucdr(rfx), conc(\
+  writeWord(rf, ucdr(rfx)),\
+  eval(ucar(rfx))\
+))

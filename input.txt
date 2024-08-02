@@ -1,0 +1,44 @@
+(d add (q ((x y) (s x (s 0 y)))))
+
+(d len*
+ (q (
+  (list accum)
+  (i 1
+  (i list
+   (len*
+    (t list)
+    (s 1 (s 0 accum))
+   )
+   accum
+  ) 0)
+ ))
+)
+(d len
+ (q (
+  (list)
+  (len* list 0)
+ ))
+)
+
+(len (q (1 2 3)))
+
+
+(e (q (1 (a) () 2)) (q (1 (a) () 2)))
+
+(d hargs (q (() x (h x))))
+
+(hargs q 2 3)
+
+(v(q (c 5 (q (1 (2) 3)))))
+
+(s 3 483)
+
+(t (q (1 2 3)))
+
+0
+
+()
+
+(i 1 4 0)
+
+(e (q (b)) (q (2)))
