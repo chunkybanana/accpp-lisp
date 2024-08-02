@@ -105,7 +105,7 @@ IFNOPT #defm cond_write_dword_full(x, y, c) _ + (y - read_dword(x)) * pos(x) * c
 #defm putsint(x) writeWord(ra, x+2^31) ; writeWord(rb, negative(rax-2^31)) ; If6(rbx, putc(45)) ; writeWord(ra, (rax - 2^31) * (-1) ^ rbx) ; putint(rax)
 
 # takes an unsigned int
-#defm putsint2(x) writeWord(ra, x % 2^31 + x / 2^31) ; If6(x / 2^31, putc(45)) ; putint(rax)
+#defm putsint2(x) writeWord(rb, x % 2^31 + x / 2^31) ; If6(x / 2^31, putc(45)) ; putint(rbx)
 
 #def debug(x) _
 #def debug(x,y) _
